@@ -65,7 +65,7 @@ def select_menu_item(update: Update, context: CallbackContext):
     reply_markup = InlineKeyboardMarkup(keyboard)
     update.callback_query.message.reply_photo(image, caption=product_detail['Description'], reply_markup=reply_markup)
     query.delete_message()
-    return 'PRODUCT_DETAIL'
+    return 'HANDLE_DESCRIPTION'
 
 
 def detail_result(update: Update, context: CallbackContext):
@@ -105,7 +105,7 @@ def handle_users_reply(update: Update, context: CallbackContext):
     states_functions = {
         'START': start,
         'HANDLE_MENU': select_menu_item,
-        'PRODUCT_DETAIL': detail_result
+        'HANDLE_DESCRIPTION': detail_result
     }
     state_handler = states_functions[user_state]
 
