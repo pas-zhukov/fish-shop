@@ -2,6 +2,8 @@
 
 Бот для заказа рыбы на базе CRM [STRAPI](https://strapi.io/)
 
+![fish_shop_preview](https://github.com/pas-zhukov/fish-shop/assets/117192371/8230122c-0e47-4624-b7fd-b6e171c27fcb)
+
 
 # Развертывание бота
 
