@@ -7,8 +7,8 @@ from telegram.ext import Filters, Updater, CallbackContext
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
 
 from api_funcs import get_products, get_product_detail, get_product_img
-from api_funcs import get_or_create_cart, create_ordered_product
-
+from api_funcs import get_or_create_cart, create_ordered_product, get_cart_ordered_products
+from api_funcs import remove_ordered_product
 
 logger = logging.getLogger(__name__)
 
@@ -60,14 +60,19 @@ def cart(update: Update, context: CallbackContext):
     query.answer()
 
     api_token = context.bot_data['starapi_token']
-    cart = get_or_create_cart(query.message.chat_id, api_token)
+    user_cart = get_or_create_cart(query.message.chat_id, api_token)
+    ordered_products = get_cart_ordered_products(user_cart, api_token, as_text=False)
+    cart_text = get_cart_ordered_products(user_cart, api_token, as_text=True)
 
-    keyboard = [
-        [InlineKeyboardButton('В меню', callback_data='cancel')]
+    keyboard = [[InlineKeyboardButton(f'Отказаться от {product["title"]} {product["amount"]}',
+                                     callback_data=f'remove_item;{product["id"]}')] for product in ordered_products]
+    keyboard += [
+        [InlineKeyboardButton('В меню', callback_data='cancel')],
+        [InlineKeyboardButton('Оплатить', callback_data='payment')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.callback_query.message.reply_text(str(cart), reply_markup=reply_markup)
-
+    update.callback_query.message.reply_text(cart_text, reply_markup=reply_markup)
+    update.callback_query.delete_message()
     return 'HANDLE_CART'
 
 
@@ -77,6 +82,11 @@ def select_cart_item(update: Update, context: CallbackContext):
     if query.data == 'cancel':
         query.answer()
         return start(update, context)
+    if query.data.startswith('remove_item'):
+        ordered_product_id = query.data.split(';')[1]
+        remove_ordered_product(ordered_product_id, context.bot_data['starapi_token'])
+
+        return cart(update, context)
 
 
 def select_menu_item(update: Update, context: CallbackContext):

@@ -18,6 +18,20 @@ def get_products(api_token: str) -> list[dict]:
     return response.json()['data']
 
 
+def get_ordered_products(api_token: str, ids: list[int] = None) -> list[dict]:
+    api_url = 'http://localhost:1337/api/ordered-products/'
+    headers = {
+        'Authorization': f'bearer {api_token}'
+    }
+    params = {
+        'populate': 'product',
+        'filters[id][$eq]': ids
+    }
+    response = requests.get(api_url, headers=headers, params=params)
+    response.raise_for_status()
+    return response.json()['data']
+
+
 def get_product_detail(product_id: int | str, api_token: str, with_img: bool = True) -> dict:
     """Get product detailed info.
 
@@ -66,7 +80,7 @@ def get_or_create_cart(user_id: int | str, api_token: str) -> dict:
         'Authorization': f'bearer {api_token}'
     }
     params = {
-        'populate': 'ordered_products',
+        'populate': ['ordered_products', 'products'],
         'filters[user_tg_id][$eq]': user_id
     }
     response = requests.get(api_url, headers=headers, params=params)
@@ -82,6 +96,28 @@ def get_or_create_cart(user_id: int | str, api_token: str) -> dict:
     create_response = requests.post(api_url, headers=headers, json=create_json)
     create_response.raise_for_status()
     return create_response.json()['data']
+
+
+def get_cart_ordered_products(cart: dict, api_token: str, as_text: bool = False):
+    ordered_products_raw = cart['attributes']['ordered_products']['data']
+    ordered_products_ids = [product['id'] for product in ordered_products_raw]
+    ordered_products_with_products_raw = get_ordered_products(api_token, ordered_products_ids)
+    ordered_products = [
+        {
+            'amount': product['attributes']['amount'],
+            'fixed_price': product['attributes']['fixed_price'],
+            'id': product['id'],
+            'title': product['attributes']['product']['data']['attributes']['Title']
+        } for product in ordered_products_with_products_raw
+    ]
+    if not as_text:
+        return ordered_products
+    else:
+        texts = [
+            f'Товар: {product["title"]}\nКол-во (кг): {product["amount"]}\nЦена за кг: {product["fixed_price"]}\n' for product in ordered_products
+        ]
+        text = '\n'.join(texts)
+        return text
 
 
 def create_ordered_product(product_id: int | str,
@@ -173,6 +209,17 @@ def create_ordered_product(product_id: int | str,
     return create_response.json()['data']
 
 
+def remove_ordered_product(product_id: int | str,
+                           api_token: str):
+    api_url = f'http://localhost:1337/api/ordered-products/{product_id}/'
+    headers = {
+        'Authorization': f'bearer {api_token}'
+    }
+    response = requests.delete(api_url, headers=headers)
+    response.raise_for_status()
+    return response.json()
+
+
 def add_ordered_product_into_cart(ordered_product_id: int | str,
                                   cart_id: int | str,
                                   api_token: str) -> dict:
@@ -196,9 +243,7 @@ if __name__ == '__main__':
     load_dotenv()
     token = os.getenv('STARAPI_TOKEN')
     car = get_or_create_cart(99, token)
-    car_id = car['id']
-    or_pro = create_ordered_product(2, token, car_id)
 
-    pprint(or_pro)
+    pprint(get_cart_ordered_products(car, token))
     #
     # print(urljoin('http://localhost:1337/', '/uploads/medium_maratmqutkdw_518eda9db2.jpg'))
