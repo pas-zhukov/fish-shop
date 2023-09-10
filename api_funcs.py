@@ -274,16 +274,3 @@ def save_customer_email(customer_id: int | str,
     response = requests.put(api_url, headers=headers, json=update_json)
     response.raise_for_status()
     return response.json()['data']
-
-
-if __name__ == '__main__':
-    import os
-    from dotenv import load_dotenv
-    from pprint import pprint
-    load_dotenv()
-    token = os.getenv('STARAPI_TOKEN')
-    car = get_or_create_cart(99, token)
-
-    pprint(get_cart_ordered_products(car, token))
-    #
-    # print(urljoin('http://localhost:1337/', '/uploads/medium_maratmqutkdw_518eda9db2.jpg'))
