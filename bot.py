@@ -1,20 +1,20 @@
 import logging
+
 import redis
 from environs import Env
-
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Filters, Updater, CallbackContext
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
 
-from api_funcs import get_products, get_product_detail, get_product_img, get_or_create_cart, create_ordered_product
+from api_funcs import get_products, get_product_detail, get_product_img
+from api_funcs import get_or_create_cart, create_ordered_product
 
 
 logger = logging.getLogger(__name__)
 
 
 def main():
-    logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                        level=logging.INFO)
+    logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
     env = Env()
     env.read_env()
     tg_bot_token = env.str('TG_BOT_TOKEN')
@@ -27,12 +27,14 @@ def main():
 
     updater = Updater(tg_bot_token)
     dispatcher = updater.dispatcher
+
     dispatcher.bot_data['redis_db'] = redis_db
     dispatcher.bot_data['starapi_token'] = starapi_token
 
     dispatcher.add_handler(CallbackQueryHandler(handle_users_reply))
     dispatcher.add_handler(MessageHandler(Filters.text, handle_users_reply))
     dispatcher.add_handler(CommandHandler('start', handle_users_reply))
+
     updater.start_polling()
     updater.idle()
 
@@ -43,17 +45,44 @@ def start(update: Update, context: CallbackContext):
     keyboard = [
         [InlineKeyboardButton(product['attributes']['Title'], callback_data=product['id'])] for product in products
     ]
+    keyboard += [[InlineKeyboardButton('Моя корзина', callback_data='cart')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     if update.message:
-        update.message.reply_text(text='Выбери товар.', reply_markup=reply_markup)
+        update.message.reply_text(text='Привет! Выбери товар.', reply_markup=reply_markup)
     else:
-        update.callback_query.message.reply_text(text='Выбери товар.', reply_markup=reply_markup)
+        update.callback_query.message.reply_text(text='Выбрать товар или посмотреть корзину.', reply_markup=reply_markup)
         update.callback_query.delete_message()
     return 'HANDLE_MENU'
 
 
+def cart(update: Update, context: CallbackContext):
+    query = update.callback_query
+    query.answer()
+
+    api_token = context.bot_data['starapi_token']
+    cart = get_or_create_cart(query.message.chat_id, api_token)
+
+    keyboard = [
+        [InlineKeyboardButton('В меню', callback_data='cancel')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    update.callback_query.message.reply_text(str(cart), reply_markup=reply_markup)
+
+    return 'HANDLE_CART'
+
+
+def select_cart_item(update: Update, context: CallbackContext):
+    query = update.callback_query
+    query.answer()
+    if query.data == 'cancel':
+        query.answer()
+        return start(update, context)
+
+
 def select_menu_item(update: Update, context: CallbackContext):
     query = update.callback_query
+    if query.data == 'cart':
+        return cart(update, context)
     query.answer()
 
     product_detail = get_product_detail(query.data, context.bot_data['starapi_token'])
@@ -61,7 +90,8 @@ def select_menu_item(update: Update, context: CallbackContext):
 
     keyboard = [
         [InlineKeyboardButton('Добавить в корзину', callback_data=f'add_to_cart;{query.data}')],
-        [InlineKeyboardButton('Назад', callback_data='cancel')]
+        [InlineKeyboardButton('Моя корзина', callback_data='cart')],
+        [InlineKeyboardButton('Назад', callback_data='cancel')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     update.callback_query.message.reply_photo(image, caption=product_detail['Description'], reply_markup=reply_markup)
@@ -74,12 +104,15 @@ def detail_result(update: Update, context: CallbackContext):
     if query.data == 'cancel':
         query.answer()
         return start(update, context)
+    elif query.data == 'cart':
+        query.answer()
+        return cart(update, context)
     elif query.data.startswith('add_to_cart'):
         query.answer()
         product_id = int(query.data.split(';')[1])
         api_token = context.bot_data['starapi_token']
-        cart = get_or_create_cart(query.message.chat_id, api_token)
-        ordered_product = create_ordered_product(product_id, api_token, cart_id=cart['id'])
+        user_cart = get_or_create_cart(query.message.chat_id, api_token)
+        ordered_product = create_ordered_product(product_id, api_token, cart_id=user_cart['id'])
         return start(update, context)
 
 
@@ -113,7 +146,8 @@ def handle_users_reply(update: Update, context: CallbackContext):
     states_functions = {
         'START': start,
         'HANDLE_MENU': select_menu_item,
-        'HANDLE_DESCRIPTION': detail_result
+        'HANDLE_DESCRIPTION': detail_result,
+        'HANDLE_CART': select_cart_item
     }
     state_handler = states_functions[user_state]
 
@@ -122,6 +156,7 @@ def handle_users_reply(update: Update, context: CallbackContext):
         redis_db.set(chat_id, next_state)
     except Exception as err:
         print(err)
+        raise err
 
 
 if __name__ == '__main__':
