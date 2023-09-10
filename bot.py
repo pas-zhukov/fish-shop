@@ -1,6 +1,7 @@
 import logging
 
 import redis
+import requests
 from environs import Env
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Filters, Updater, CallbackContext
@@ -9,6 +10,7 @@ from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
 from api_funcs import get_products, get_product_detail, get_product_img
 from api_funcs import get_or_create_cart, create_ordered_product, get_cart_ordered_products
 from api_funcs import remove_ordered_product
+from api_funcs import get_or_create_customer, save_customer_email
 
 logger = logging.getLogger(__name__)
 
@@ -85,8 +87,28 @@ def select_cart_item(update: Update, context: CallbackContext):
     if query.data.startswith('remove_item'):
         ordered_product_id = query.data.split(';')[1]
         remove_ordered_product(ordered_product_id, context.bot_data['starapi_token'])
-
         return cart(update, context)
+    if query.data == 'payment':
+        return request_an_email(update, context)
+
+
+def request_an_email(update: Update, context: CallbackContext):
+    update.callback_query.message.reply_text(text='Для оплаты введите Ваш адрес электронной почты.')
+    update.callback_query.delete_message()
+    return 'WAITING_EMAIL'
+
+
+def process_email(update: Update, context: CallbackContext):
+    api_token = context.bot_data['starapi_token']
+    users_email = update.message.text
+    customer_id = get_or_create_customer(update.message.chat_id, api_token)['id']
+    try:
+        customer = save_customer_email(customer_id, users_email, api_token)
+        update.message.reply_text('Заказ принят! Ожидайте обращения нашего менеджера на Ваш e-mail!')
+        return start(update, context)
+    except requests.exceptions.HTTPError:
+        update.message.reply_text('E-mail введён некорректно! Повторите ввод.')
+        return 'WAITING_EMAIL'
 
 
 def select_menu_item(update: Update, context: CallbackContext):
@@ -157,7 +179,8 @@ def handle_users_reply(update: Update, context: CallbackContext):
         'START': start,
         'HANDLE_MENU': select_menu_item,
         'HANDLE_DESCRIPTION': detail_result,
-        'HANDLE_CART': select_cart_item
+        'HANDLE_CART': select_cart_item,
+        'WAITING_EMAIL': process_email
     }
     state_handler = states_functions[user_state]
 

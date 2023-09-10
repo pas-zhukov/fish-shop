@@ -236,6 +236,46 @@ def add_ordered_product_into_cart(ordered_product_id: int | str,
     #  use requests.put!
 
 
+def get_or_create_customer(user_tg_id: int | str, api_token: str) -> dict:
+    api_url = 'http://localhost:1337/api/customers/'
+    headers = {
+        'Authorization': f'bearer {api_token}'
+    }
+    params = {
+        'filters[telegram_id][$eq]': user_tg_id
+    }
+    response = requests.get(api_url, headers=headers, params=params)
+    response.raise_for_status()
+    users = response.json()['data']
+    if users:
+        return users[0]
+    create_json = {
+        'data': {
+            'telegram_id': user_tg_id,
+        }
+    }
+    create_response = requests.post(api_url, headers=headers, json=create_json)
+    create_response.raise_for_status()
+    return create_response.json()['data']
+
+
+def save_customer_email(customer_id: int | str,
+                        email: str,
+                        api_token: str):
+    api_url = f'http://localhost:1337/api/customers/{customer_id}/'
+    headers = {
+        'Authorization': f'bearer {api_token}'
+    }
+    update_json = {
+        'data': {
+            'email': email,
+        }
+    }
+    response = requests.put(api_url, headers=headers, json=update_json)
+    response.raise_for_status()
+    return response.json()['data']
+
+
 if __name__ == '__main__':
     import os
     from dotenv import load_dotenv
