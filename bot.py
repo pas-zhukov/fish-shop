@@ -6,7 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Filters, Updater, CallbackContext
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
 
-from api_funcs import get_products, get_product_detail, get_product_img
+from api_funcs import get_products, get_product_detail, get_product_img, get_or_create_cart, create_ordered_product
 
 
 logger = logging.getLogger(__name__)
@@ -60,6 +60,7 @@ def select_menu_item(update: Update, context: CallbackContext):
     image = get_product_img(product_detail['Image']['data']['attributes']['url'])
 
     keyboard = [
+        [InlineKeyboardButton('Добавить в корзину', callback_data=f'add_to_cart;{query.data}')],
         [InlineKeyboardButton('Назад', callback_data='cancel')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -72,6 +73,13 @@ def detail_result(update: Update, context: CallbackContext):
     query = update.callback_query
     if query.data == 'cancel':
         query.answer()
+        return start(update, context)
+    elif query.data.startswith('add_to_cart'):
+        query.answer()
+        product_id = int(query.data.split(';')[1])
+        api_token = context.bot_data['starapi_token']
+        cart = get_or_create_cart(query.message.chat_id, api_token)
+        ordered_product = create_ordered_product(product_id, api_token, cart_id=cart['id'])
         return start(update, context)
 
 
