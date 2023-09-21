@@ -20,7 +20,13 @@ def main():
     env = Env()
     env.read_env()
     tg_bot_token = env.str('TG_BOT_TOKEN')
-    starapi_token = env.str('STARAPI_TOKEN')
+    strapi_token = env.str('STRAPI_TOKEN')
+    strapi_host = env.str('STRAPI_HOST', 'http://localhost:1337/')
+    strapi_product_name = env.str('PRODUCT', 'product')
+    strapi_product_name_plural = env.str('PRODUCT_PLURAL', 'products')
+    strapi_ordered_product_name_plural = env.str('ORDERED_PRODUCT_PLURAL', 'ordered-products')
+    strapi_cart_name_plural = env.str('CART_PLURAL', 'carts')
+    strapi_customer_name_plural = env.str('CUSTOMER_PLURAL', 'customers')
 
     redis_db = redis.Redis(host=env.str('REDIS_DB_HOST'),
                            port=env.int('REDIS_DB_PORT'),
@@ -31,7 +37,15 @@ def main():
     dispatcher = updater.dispatcher
 
     dispatcher.bot_data['redis_db'] = redis_db
-    dispatcher.bot_data['starapi_token'] = starapi_token
+    dispatcher.bot_data['strapi_token'] = strapi_token
+    dispatcher.bot_data['strapi_host'] = strapi_host
+    dispatcher.bot_data['models_config'] = {
+        'strapi_product_name': strapi_product_name,
+        'strapi_product_name_plural': strapi_product_name_plural,
+        'strapi_ordered_product_name_plural': strapi_ordered_product_name_plural,
+        'strapi_cart_name_plural': strapi_cart_name_plural,
+        'strapi_customer_name_plural': strapi_customer_name_plural
+    }
 
     dispatcher.add_handler(CallbackQueryHandler(handle_users_reply))
     dispatcher.add_handler(MessageHandler(Filters.text, handle_users_reply))
@@ -43,7 +57,9 @@ def main():
 
 def start(update: Update, context: CallbackContext):
     """Хэндлер для состояния START."""
-    products = get_products(context.bot_data['starapi_token'])
+    hostname = context.bot_data['strapi_host']
+    models_config = context.bot_data['models_config']
+    products = get_products(context.bot_data['strapi_token'], hostname, models_config)
     keyboard = [
         [InlineKeyboardButton(product['attributes']['Title'], callback_data=product['id'])] for product in products
     ]
@@ -61,10 +77,12 @@ def cart(update: Update, context: CallbackContext):
     query = update.callback_query
     query.answer()
 
-    api_token = context.bot_data['starapi_token']
-    user_cart = get_or_create_cart(query.message.chat_id, api_token)
-    ordered_products = get_cart_ordered_products(user_cart, api_token, as_text=False)
-    cart_text = get_cart_ordered_products(user_cart, api_token, as_text=True)
+    api_token = context.bot_data['strapi_token']
+    hostname = context.bot_data['strapi_host']
+    models_config = context.bot_data['models_config']
+    user_cart = get_or_create_cart(query.message.chat_id, hostname, models_config, api_token)
+    ordered_products = get_cart_ordered_products(user_cart, api_token, hostname, models_config, as_text=False)
+    cart_text = get_cart_ordered_products(user_cart, api_token, hostname, models_config, as_text=True)
 
     keyboard = [[InlineKeyboardButton(f'Отказаться от {product["title"]} {product["amount"]}',
                                      callback_data=f'remove_item;{product["id"]}')] for product in ordered_products]
@@ -79,6 +97,9 @@ def cart(update: Update, context: CallbackContext):
 
 
 def select_cart_item(update: Update, context: CallbackContext):
+    hostname = context.bot_data['strapi_host']
+    models_config = context.bot_data['models_config']
+
     query = update.callback_query
     query.answer()
     if query.data == 'cancel':
@@ -86,7 +107,7 @@ def select_cart_item(update: Update, context: CallbackContext):
         return start(update, context)
     if query.data.startswith('remove_item'):
         ordered_product_id = query.data.split(';')[1]
-        remove_ordered_product(ordered_product_id, context.bot_data['starapi_token'])
+        remove_ordered_product(ordered_product_id, context.bot_data['starapi_token'], hostname, models_config)
         return cart(update, context)
     if query.data == 'payment':
         return request_an_email(update, context)
@@ -99,11 +120,13 @@ def request_an_email(update: Update, context: CallbackContext):
 
 
 def process_email(update: Update, context: CallbackContext):
-    api_token = context.bot_data['starapi_token']
+    api_token = context.bot_data['strapi_token']
+    hostname = context.bot_data['strapi_host']
+    models_config = context.bot_data['models_config']
     users_email = update.message.text
-    customer_id = get_or_create_customer(update.message.chat_id, api_token)['id']
+    customer_id = get_or_create_customer(update.message.chat_id, api_token, hostname, models_config)['id']
     try:
-        customer = save_customer_email(customer_id, users_email, api_token)
+        customer = save_customer_email(customer_id, users_email, api_token, hostname, models_config)
         update.message.reply_text('Заказ принят! Ожидайте обращения нашего менеджера на Ваш e-mail!')
         return start(update, context)
     except requests.exceptions.HTTPError:
@@ -112,13 +135,16 @@ def process_email(update: Update, context: CallbackContext):
 
 
 def select_menu_item(update: Update, context: CallbackContext):
+    hostname = context.bot_data['strapi_host']
+    models_config = context.bot_data['models_config']
+
     query = update.callback_query
     if query.data == 'cart':
         return cart(update, context)
     query.answer()
 
-    product_detail = get_product_detail(query.data, context.bot_data['starapi_token'])
-    image = get_product_img(product_detail['Image']['data']['attributes']['url'])
+    product_detail = get_product_detail(query.data, context.bot_data['starapi_token'], hostname, models_config)
+    image = get_product_img(product_detail['Image']['data']['attributes']['url'], hostname)
 
     keyboard = [
         [InlineKeyboardButton('Добавить в корзину', callback_data=f'add_to_cart;{query.data}')],
@@ -142,9 +168,11 @@ def detail_result(update: Update, context: CallbackContext):
     elif query.data.startswith('add_to_cart'):
         query.answer()
         product_id = int(query.data.split(';')[1])
-        api_token = context.bot_data['starapi_token']
-        user_cart = get_or_create_cart(query.message.chat_id, api_token)
-        ordered_product = create_ordered_product(product_id, api_token, cart_id=user_cart['id'])
+        api_token = context.bot_data['strapi_token']
+        hostname = context.bot_data['strapi_host']
+        models_config = context.bot_data['models_config']
+        user_cart = get_or_create_cart(query.message.chat_id, hostname, models_config, api_token)
+        ordered_product = create_ordered_product(product_id, api_token, hostname, models_config, cart_id=user_cart['id'])
         return start(update, context)
 
 

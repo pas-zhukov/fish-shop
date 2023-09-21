@@ -1,15 +1,15 @@
 from urllib.parse import urljoin
 from io import BytesIO
 from decimal import Decimal
+import posixpath
 
 import requests
 
 
-BASE_STARAPI_URL = 'http://localhost:1337/'
-
-
-def get_products(api_token: str) -> list[dict]:
-    api_url = 'http://localhost:1337/api/products/'
+def get_products(api_token: str, hostname: str, models_config: dict) -> list[dict]:
+    product_model_plural = models_config['strapi_product_name_plural']
+    api_hand = posixpath.join('/api/', product_model_plural)
+    api_url = urljoin(hostname, api_hand)
     headers = {
         'Authorization': f'bearer {api_token}'
     }
@@ -18,13 +18,18 @@ def get_products(api_token: str) -> list[dict]:
     return response.json()['data']
 
 
-def get_ordered_products(api_token: str, ids: list[int] = None) -> list[dict]:
-    api_url = 'http://localhost:1337/api/ordered-products/'
+def get_ordered_products(api_token: str,
+                         hostname: str,
+                         models_config: dict,
+                         ids: list[int] = None) -> list[dict]:
+    ordered_product_model_plural = models_config['strapi_ordered_product_name_plural']
+    api_hand = posixpath.join('/api/', ordered_product_model_plural)
+    api_url = urljoin(hostname, api_hand)
     headers = {
         'Authorization': f'bearer {api_token}'
     }
     params = {
-        'populate': 'product',
+        'populate': f'{models_config["strapi_product_name"]}',
         'filters[id][$eq]': ids
     }
     response = requests.get(api_url, headers=headers, params=params)
@@ -32,7 +37,11 @@ def get_ordered_products(api_token: str, ids: list[int] = None) -> list[dict]:
     return response.json()['data']
 
 
-def get_product_detail(product_id: int | str, api_token: str, with_img: bool = True) -> dict:
+def get_product_detail(product_id: int | str,
+                       api_token: str,
+                       hostname: str,
+                       models_config: dict,
+                       with_img: bool = True) -> dict:
     """Get product detailed info.
 
     Examples:
@@ -46,7 +55,9 @@ def get_product_detail(product_id: int | str, api_token: str, with_img: bool = T
           'updatedAt': '2023-09-08T09:30:42.656Z'
         }
     """
-    api_url = f'http://localhost:1337/api/products/{product_id}/'
+    product_model_plural = models_config['strapi_product_name_plural']
+    api_hand = posixpath.join('/api/', product_model_plural, product_id)
+    api_url = urljoin(hostname, api_hand)
     headers = {
         'Authorization': f'bearer {api_token}'
     }
@@ -58,29 +69,37 @@ def get_product_detail(product_id: int | str, api_token: str, with_img: bool = T
     return response.json()['data']['attributes']
 
 
-def get_product_img(img_url: str) -> BytesIO:
-    full_img_url = urljoin(BASE_STARAPI_URL, img_url)
+def get_product_img(img_url: str,
+                    hostname: str) -> BytesIO:
+    full_img_url = urljoin(hostname, img_url)
     response = requests.get(full_img_url)
     response.raise_for_status()
     image = BytesIO(response.content)
     return image
 
 
-def get_or_create_cart(user_id: int | str, api_token: str) -> dict:
+def get_or_create_cart(user_id: int | str,
+                       hostname: str,
+                       models_config: dict,
+                       api_token: str) -> dict:
     """Get cart of a specific user.
 
     Args:
         user_id(int): ID of the user for whom you want to create or get a cart
+        hostname: STRAPI host url
+        cart_model_plural: cart model plural name
         api_token(str): STRAPI Token
     Return:
         int: Cart of a specified user
     """
-    api_url = f'http://localhost:1337/api/carts/'
+    cart_model_plural = models_config['strapi_cart_name_plural']
+    api_hand = posixpath.join('/api/', cart_model_plural)
+    api_url = urljoin(hostname, api_hand)
     headers = {
         'Authorization': f'bearer {api_token}'
     }
     params = {
-        'populate': ['ordered_products', 'products'],
+        'populate': [f'models_config["strapi_ordered_product_name_plural"]', f'{models_config["strapi_product_name_plural"]}'],
         'filters[user_tg_id][$eq]': user_id
     }
     response = requests.get(api_url, headers=headers, params=params)
@@ -98,10 +117,17 @@ def get_or_create_cart(user_id: int | str, api_token: str) -> dict:
     return create_response.json()['data']
 
 
-def get_cart_ordered_products(cart: dict, api_token: str, as_text: bool = False):
+def get_cart_ordered_products(cart: dict,
+                              api_token: str,
+                              hostname: str,
+                              models_config: dict,
+                              as_text: bool = False):
     ordered_products_raw = cart['attributes']['ordered_products']['data']
     ordered_products_ids = [product['id'] for product in ordered_products_raw]
-    ordered_products_with_products_raw = get_ordered_products(api_token, ordered_products_ids)
+    ordered_products_with_products_raw = get_ordered_products(api_token,
+                                                              ids=ordered_products_ids,
+                                                              models_config=models_config,
+                                                              hostname=hostname)
     ordered_products = [
         {
             'amount': product['attributes']['amount'],
@@ -122,6 +148,8 @@ def get_cart_ordered_products(cart: dict, api_token: str, as_text: bool = False)
 
 def create_ordered_product(product_id: int | str,
                            api_token: str,
+                           hostname: str,
+                           models_config: dict,
                            cart_id: int | str = None,
                            amount: float = 1.0,
                            fixed_price: Decimal = None) -> dict:
@@ -133,6 +161,8 @@ def create_ordered_product(product_id: int | str,
     Args:
         product_id(int | str): Product ID.
         api_token(str): STRAPI Token.
+        hostname: ...
+        models_config: ...
         cart_id(int | str): Cart ID to which created OrderedProduct should be connected. None by default.
         amount(float): Product amount. 1 kg by default.
         fixed_price(Decimal): Price that will be fixed for this product in this particular OrderedProduct.
@@ -179,7 +209,9 @@ def create_ordered_product(product_id: int | str,
           "id":5
         }
     """
-    api_url = f'http://localhost:1337/api/ordered-products/'
+    ordered_product_model_plural = models_config['strapi_ordered_product_name_plural']
+    api_hand = posixpath.join('/api/', ordered_product_model_plural)
+    api_url = urljoin(hostname, api_hand)
     headers = {
         'Authorization': f'bearer {api_token}'
     }
@@ -210,8 +242,12 @@ def create_ordered_product(product_id: int | str,
 
 
 def remove_ordered_product(product_id: int | str,
-                           api_token: str):
-    api_url = f'http://localhost:1337/api/ordered-products/{product_id}/'
+                           api_token: str,
+                           hostname: str,
+                           models_config: dict):
+    ordered_product_model_plural = models_config['strapi_ordered_product_name_plural']
+    api_hand = posixpath.join('/api/', ordered_product_model_plural, product_id)
+    api_url = urljoin(hostname, api_hand)
     headers = {
         'Authorization': f'bearer {api_token}'
     }
@@ -236,8 +272,13 @@ def add_ordered_product_into_cart(ordered_product_id: int | str,
     #  use requests.put!
 
 
-def get_or_create_customer(user_tg_id: int | str, api_token: str) -> dict:
-    api_url = 'http://localhost:1337/api/customers/'
+def get_or_create_customer(user_tg_id: int | str,
+                           api_token: str,
+                           hostname: str,
+                           models_config: dict) -> dict:
+    customer_model_plural = models_config['strapi_customer_name_plural']
+    api_hand = posixpath.join('/api/', customer_model_plural)
+    api_url = urljoin(hostname, api_hand)
     headers = {
         'Authorization': f'bearer {api_token}'
     }
@@ -261,8 +302,13 @@ def get_or_create_customer(user_tg_id: int | str, api_token: str) -> dict:
 
 def save_customer_email(customer_id: int | str,
                         email: str,
-                        api_token: str):
-    api_url = f'http://localhost:1337/api/customers/{customer_id}/'
+                        api_token: str,
+                        hostname: str,
+                        models_config: dict
+                        ):
+    customer_model_plural = models_config['strapi_customer_name_plural']
+    api_hand = posixpath.join('/api/', customer_model_plural, customer_id)
+    api_url = urljoin(hostname, api_hand)
     headers = {
         'Authorization': f'bearer {api_token}'
     }
