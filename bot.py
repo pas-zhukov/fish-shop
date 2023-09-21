@@ -7,10 +7,10 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Filters, Updater, CallbackContext
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
 
-from api_funcs import get_products, get_product_detail, get_product_img
-from api_funcs import get_or_create_cart, create_ordered_product, get_cart_ordered_products
-from api_funcs import remove_ordered_product
-from api_funcs import get_or_create_customer, save_customer_email
+from strapi_api import get_products, get_product_detail, get_product_img
+from strapi_api import get_or_create_cart, create_ordered_product, get_cart_ordered_products
+from strapi_api import remove_ordered_product
+from strapi_api import get_or_create_customer, save_customer_email
 
 logger = logging.getLogger(__name__)
 
