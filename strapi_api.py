@@ -107,12 +107,12 @@ def get_or_create_cart(user_id: int | str,
     carts = response.json()['data']
     if carts:
         return carts[0]
-    create_json = {
+    new_cart = {
         'data': {
             'user_tg_id': user_id
         }
     }
-    create_response = requests.post(api_url, headers=headers, json=create_json)
+    create_response = requests.post(api_url, headers=headers, json=new_cart)
     create_response.raise_for_status()
     return create_response.json()['data']
 
@@ -218,7 +218,7 @@ def create_ordered_product(product_id: int | str,
     if not fixed_price:
         product = get_product_detail(product_id, api_token, with_img=False)
         fixed_price = product['Price']
-    create_json = {
+    new_ordered_product = {
         'data': {
             'product': {
                 'connect': [product_id, ]
@@ -236,7 +236,7 @@ def create_ordered_product(product_id: int | str,
     create_response = requests.post(api_url,
                                     headers=headers,
                                     params=params,
-                                    json=create_json)
+                                    json=new_ordered_product)
     create_response.raise_for_status()
     return create_response.json()['data']
 
@@ -290,12 +290,12 @@ def get_or_create_customer(user_tg_id: int | str,
     users = response.json()['data']
     if users:
         return users[0]
-    create_json = {
+    new_customer = {
         'data': {
             'telegram_id': user_tg_id,
         }
     }
-    create_response = requests.post(api_url, headers=headers, json=create_json)
+    create_response = requests.post(api_url, headers=headers, json=new_customer)
     create_response.raise_for_status()
     return create_response.json()['data']
 
