@@ -138,12 +138,11 @@ def get_cart_ordered_products(cart: dict,
     ]
     if not as_text:
         return ordered_products
-    else:
-        texts = [
-            f'Товар: {product["title"]}\nКол-во (кг): {product["amount"]}\nЦена за кг: {product["fixed_price"]}\n' for product in ordered_products
-        ]
-        text = '\n'.join(texts)
-        return text
+    texts = [
+        f'Товар: {product["title"]}\nКол-во (кг): {product["amount"]}\nЦена за кг: {product["fixed_price"]}\n' for product in ordered_products
+    ]
+    text = '\n'.join(texts)
+    return text
 
 
 def create_ordered_product(product_id: int | str,
